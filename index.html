@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Labo 3 Física I: simuladores de mesa+polea y plano inclinado con rozamiento." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔬</text></svg>" />
+<title>Labo 3 · Simuladores de dinámica</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>🔬 Labo 3 · Simuladores de dinámica</h1>
+  <p>Elegí una simulación · <code>g = 9.8 m/s²</code> · integración con paso fijo <code>dt = 0.005 s</code></p>
+</header>
+<div class="cards">
+  <a class="card" href="sim-polea.html">
+    <h2>🪢 Mesa + polea</h2>
+    <p>Dos masas unidas por una cuerda ideal sobre una polea sin masa: <b>m₁</b> sobre mesa horizontal con rozamiento y <b>m₂</b> colgando.</p>
+    <p>Vectores <b style="color:#2563eb">T</b>, <b style="color:#dc2626">Fr</b> y <b style="color:#ec4899">P₂</b> · empuje inicial opcional · detención al borde o al suelo.</p>
+    <span class="go">Abrir simulación →</span>
+  </a>
+  <a class="card" href="sim-plano.html">
+    <h2>📐 Plano inclinado</h2>
+    <p>Bloque que desliza por un plano con rozamiento: reposo si <b>tan θ ≤ μs</b>, si no <b>a = g·(sinθ − μk·cosθ)</b>.</p>
+    <p>Vectores <b style="color:#ec4899">P</b>, <b style="color:#2563eb">N</b> y <b style="color:#dc2626">Fr</b> · detención en la base del plano.</p>
+    <span class="go">Abrir simulación →</span>
+  </a>
+</div>
+<footer>
+  Servir con <code>python3 -m http.server</code> dentro de <code>labo3/</code> (las páginas importan sus módulos <code>.js</code> como ES modules). Para agregar otra simulación en el futuro: duplicar una tarjeta aquí y su página <code>sim-*.html</code> + módulo.
+</footer>
+</body>
+</html>

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Simulación mesa + polea: dos masas con rozamiento, vectores y empuje opcional." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪢</text></svg>" />
+<title>Labo 3 · Masas, polea y rozamiento</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <a class="back" href="index.html">← Volver al índice</a>
+  <h1>🔬 Labo 3 · Dos masas, polea y rozamiento</h1>
+  <p>Mesa con rozamiento · cuerda ideal · polea sin masa · <code>g = 9.8 m/s²</code> · paso fijo <code>dt = 0.005 s</code></p>
+</header>
+<main>
+  <section class="canvas-card">
+    <canvas id="scene" width="760" height="420"></canvas>
+    <div id="banner" class="info">Configura los parámetros y pulsa ▶ Play.</div>
+  </section>
+  <aside class="side">
+    <div class="box">
+      <h2>▶ Controles</h2>
+      <div class="btnrow">
+        <button id="btnPlay">▶ Play</button>
+        <button id="btnPause">⏸ Pausa</button>
+        <button id="btnReset">↺ Reiniciar</button>
+        <button id="btnStep">⏭ Paso +0.05 s</button>
+      </div>
+      <label style="margin-top:8px">Velocidad
+        <select id="speed">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+        </select>
+      </label>
+    </div>
+    <div class="box">
+      <h2>⚙ Parámetros (preset ancla)</h2>
+      <div class="grid">
+        <label>m₁ (kg)<input id="m1" type="number" inputmode="decimal" step="0.1" min="0.1" value="5"></label>
+        <label>m₂ (kg)<input id="m2" type="number" inputmode="decimal" step="0.1" min="0.1" value="2.5"></label>
+        <label>μ estático<input id="mus" type="number" inputmode="decimal" step="0.01" min="0" value="0.45"></label>
+        <label>μ cinético<input id="muk" type="number" inputmode="decimal" step="0.01" min="0" value="0.41"></label>
+        <label>Mesa útil x₀ (m)<input id="x0" type="number" inputmode="decimal" step="0.1" min="0.1" value="2"></label>
+        <label>Altura h₀ (m)<input id="h0" type="number" inputmode="decimal" step="0.1" min="0.1" value="2"></label>
+        <label>Empuje F (N)<input id="fpush" type="number" inputmode="decimal" step="0.5" min="0" value="0"></label>
+        <label>Δt empuje (s)<input id="dtpush" type="number" inputmode="decimal" step="0.05" min="0" value="0.2"></label>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button id="btnPush" style="background:#16a34a;color:#fff">💪 Empuje pequeño</button>
+      </div>
+    </div>
+    <div class="box">
+      <h2>⏱ Cronómetro y estado</h2>
+      <div class="chrono" id="clock">00:00.000</div>
+      <div class="read">
+        <div><b>x recorrida (m)</b><span id="rx">0.000</span></div>
+        <div><b>y altura m₂ (m)</b><span id="ry">2.000</span></div>
+        <div><b>a (m/s²)</b><span id="ra">–</span></div>
+        <div><b>v (m/s)</b><span id="rv">0.000</span></div>
+        <div><b>T (N)</b><span id="rT">–</span></div>
+        <div><b>Fr (N)</b><span id="rFr">–</span></div>
+      </div>
+    </div>
+    <div class="box">
+      <h2>🎨 Vectores (longitud ∝ valor)</h2>
+      <div class="legend">
+        <div><span class="dot" style="background:#2563eb"></span><b style="color:#2563eb">T</b> tensión (azul) <input type="checkbox" id="showT" checked></div>
+        <div><span class="dot" style="background:#dc2626"></span><b style="color:#dc2626">Fr</b> rozamiento (rojo) <input type="checkbox" id="showFr" checked></div>
+        <div><span class="dot" style="background:#ec4899"></span><b style="color:#ec4899">P₂</b> peso m₂ (rosa) <input type="checkbox" id="showP" checked></div>
+        <div><span class="dot" style="background:#16a34a"></span><b style="color:#16a34a">F</b> empuje (verde) <input type="checkbox" id="showF" checked></div>
+      </div>
+    </div>
+  </aside>
+</main>
+<footer>
+  Abre con servidor local (p. ej. <code>python3 -m http.server</code>) porque el HTML importa <code>./physics.js</code> como módulo ES. Lógica de física idéntica al módulo: reposo si <code>m₂·g ≤ μs·m₁·g</code>, si no <code>a=(m₂·g−μk·m₁·g)/(m₁+m₂)</code>. Empuje opcional <code>F</code> durante <code>Δt</code>: despega si <code>m₂·g+F &gt; μs·m₁·g</code>.
+</footer>
+
+<script type="module">
+import { G, DT, solveSystem, validateFriction } from './physics.js';
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('scene');
+const ctx = canvas.getContext('2d');
+const banner = $('banner');
+
+const ui = {
+  m1: $('m1'), m2: $('m2'), mus: $('mus'), muk: $('muk'),
+  x0: $('x0'), h0: $('h0'), fpush: $('fpush'), dtpush: $('dtpush'),
+  speed: $('speed'),
+  clock: $('clock'), rx: $('rx'), ry: $('ry'), ra: $('ra'),
+  rv: $('rv'), rT: $('rT'), rFr: $('rFr'),
+  showT: $('showT'), showFr: $('showFr'), showP: $('showP'), showF: $('showF'),
+  btnPlay: $('btnPlay'), btnPause: $('btnPause'),
+  btnReset: $('btnReset'), btnStep: $('btnStep'), btnPush: $('btnPush'),
+};
+
+let S = null;          // estado {x,v,t,stopped,reason,accel,params}
+let running = false;
+let accMs = 0, lastTs = 0;
+
+const num = (el, fb) => {
+  const v = parseFloat(el.value);
+  return Number.isFinite(v) ? v : fb;
+};
+const readParams = () => ({
+  m1: num(ui.m1, 5), m2: num(ui.m2, 2.5),
+  mu_s: num(ui.mus, 0.45), mu_k: num(ui.muk, 0.41),
+  x0: num(ui.x0, 2), h0: num(ui.h0, 2),
+  F_push: num(ui.fpush, 0), dt_push: num(ui.dtpush, 0.2),
+});
+
+// Valores instantáneos (fase de empujón vs fase libre).
+function curVals() {
+  if (!S || !S.accel || !S.accel.executed) return null;
+  const P = S.accel.push;
+  if (P && P.unstuck && S.t < S.params.dt_push && !S.stopped)
+    return { a: P.a_push, T: P.T_push };
+  return { a: S.accel.a, T: S.accel.T };
+}
+
+function setBanner(msg, kind = 'info') {
+  banner.textContent = msg;
+  banner.className = kind === 'warn' ? 'warn' : (kind === 'ok' ? '' : 'info');
+  banner.id = 'banner';
+}
+
+function reset() {
+  running = false; accMs = 0;
+  const p = readParams();
+  const vf = validateFriction(p.mu_s, p.mu_k);
+  if (!vf.ok) {
+    S = null;
+    setBanner('⚠ ' + vf.warning, 'warn');
+    ui.btnPlay.disabled = true;
+    drawScene(p, { x: 0, v: 0, t: 0 }, null);
+    updateReads(p, { x: 0, v: 0, t: 0 }, null);
+    return;
+  }
+  const r = solveSystem(p);
+  if (!r.executed) { S = null; setBanner('⚠ ' + r.warning, 'warn'); ui.btnPlay.disabled = true; return; }
+  ui.btnPlay.disabled = false;
+  S = { x: 0, v: 0, t: 0, stopped: false, reason: null, accel: r, params: p };
+  if (r.atRest) {
+    S.stopped = true; S.reason = 'reposo';
+    if (p.F_push > 0 && p.dt_push > 0)
+      setBanner(`⏸ En reposo aun con empuje: m₂·g+F (${(p.m2*G+p.F_push).toFixed(2)} N) ≤ μs·m₁·g (${(p.mu_s*p.m1*G).toFixed(2)} N). El estático lo absorbe: Fr=${r.Fr.toFixed(2)} N.`, 'info');
+    else
+      setBanner(`⏸ En reposo: m₂·g (${(p.m2*G).toFixed(2)} N) ≤ μs·m₁·g (${(p.mu_s*p.m1*G).toFixed(2)} N). a=0, T=Fr=${(p.m2*G).toFixed(2)} N.`, 'info');
+  } else if (r.push && r.push.unstuck && (p.m2 * G <= p.mu_s * p.m1 * G)) {
+    setBanner(`💪 El empuje despega el sistema (m₂ sola no podía). a_push=${r.push.a_push.toFixed(3)} m/s² durante ${p.dt_push} s, luego a=${r.a.toFixed(3)} m/s². Pulsa Play.`, 'info');
+  } else if (r.push && r.push.unstuck) {
+    setBanner(`💪 Con empuje: a_push=${r.push.a_push.toFixed(3)} m/s² durante ${p.dt_push} s, luego a=${r.a.toFixed(3)} m/s². T=${r.T.toFixed(2)} N, Fr=${r.Fr.toFixed(2)} N. Pulsa Play.`, 'info');
+  } else {
+    setBanner(`▶ Listo: a=${r.a.toFixed(3)} m/s², T=${r.T.toFixed(2)} N, Fr=${r.Fr.toFixed(2)} N. Pulsa Play.`, 'info');
+  }
+  drawScene(p, S, r);
+  updateReads(p, S, r);
+}
+
+function substep() {
+  if (!S || S.stopped || !S.accel || S.accel.atRest) return;
+  const P = S.accel.push;
+  const a = (P && P.unstuck && S.t < S.params.dt_push) ? P.a_push : S.accel.a;
+  const p = S.params;
+  S.x += S.v * DT + 0.5 * a * DT * DT;
+  S.v += a * DT;
+  S.t = Math.round((S.t + DT) / DT) * DT;
+  const xStop = Math.min(p.x0, p.h0);
+  if (S.x >= xStop) {
+    S.x = xStop; S.v = 0; S.stopped = true;
+    S.reason = p.x0 < p.h0 ? 'borde' : (p.h0 < p.x0 ? 'suelo' : 'ambos');
+    running = false;
+    const msg = S.reason === 'borde' ? '🛑 m₁ llegó al borde de la mesa.'
+      : S.reason === 'suelo' ? '🛑 m₂ tocó el suelo.'
+      : '🛑 Llegada simultánea al borde y al suelo.';
+    setBanner(msg + ` t=${S.t.toFixed(3)} s, x=${S.x.toFixed(3)} m.`, 'ok');
+    return;
+  }
+  if (S.v <= 0) {
+    S.v = 0; S.stopped = true; S.reason = 'rozamiento';
+    running = false;
+    setBanner(`🛑 Detenido por rozamiento: el peso no sostiene el movimiento tras el empujón. t=${S.t.toFixed(3)} s, x=${S.x.toFixed(3)} m.`, 'ok');
+  }
+}
+
+function frame(ts) {
+  if (running && S && !S.stopped) {
+    if (!lastTs) lastTs = ts;
+    const speed = parseFloat(ui.speed.value) || 1;
+    accMs += (ts - lastTs) * speed;
+    lastTs = ts;
+    let n = 0;
+    while (accMs >= DT * 1000 && n < 400) { substep(); accMs -= DT * 1000; n++; if (S.stopped) { accMs = 0; break; } }
+    drawScene(S.params, S, S.accel);
+    updateReads(S.params, S, S.accel);
+  } else { lastTs = ts; }
+  requestAnimationFrame(frame);
+}
+
+function fmtClock(t) {
+  const mm = String(Math.floor(t / 60)).padStart(2, '0');
+  const ss = String(Math.floor(t % 60)).padStart(2, '0');
+  const ms = String(Math.floor((t % 1) * 1000)).padStart(3, '0');
+  return `${mm}:${ss}.${ms}`;
+}
+
+function updateReads(p, st, accel) {
+  const y = p.h0 - st.x;
+  ui.clock.textContent = fmtClock(st.t);
+  ui.rx.textContent = st.x.toFixed(3);
+  ui.ry.textContent = Math.max(0, y).toFixed(3);
+  ui.rv.textContent = st.v.toFixed(3);
+  if (accel && accel.executed) {
+    const c = curVals() || { a: accel.a, T: accel.T };
+    ui.ra.textContent = c.a.toFixed(3);
+    ui.rT.textContent = c.T.toFixed(2);
+    ui.rFr.textContent = accel.Fr.toFixed(2);
+  } else { ui.ra.textContent = ui.rT.textContent = ui.rFr.textContent = '–'; }
+}
+
+function arrow(x1, y1, x2, y2, color, label) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 2) return;
+  const ang = Math.atan2(dy, dx);
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  const h = 9;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - h * Math.cos(ang - 0.45), y2 - h * Math.sin(ang - 0.45));
+  ctx.lineTo(x2 - h * Math.cos(ang + 0.45), y2 - h * Math.sin(ang + 0.45));
+  ctx.closePath(); ctx.fill();
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText(label, x2 + 6, y2 - 6);
+}
+
+function fitCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = canvas.getBoundingClientRect();
+  canvas.width = Math.max(300, Math.round(r.width * dpr));
+  canvas.height = Math.round(420 * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function drawScene(p, st, accel) {
+  fitCanvas();
+  const r = canvas.getBoundingClientRect();
+  const W = r.width, H = 420;
+  ctx.clearRect(0, 0, W, H);
+
+  // Geometría
+  const pulleyX = W - 120, tableTop = H * 0.42, groundY = H - 36;
+  const tableX0 = 30, pulleyR = 22, blockW = 58, blockH = 42, sphereR = 18;
+  const startX = tableX0 + 40;
+  const travelPx = Math.max(60, pulleyX - pulleyR - 8 - (startX + blockW / 2));
+  const pxPerM = travelPx / Math.max(p.x0, 1e-6);
+  const dropPx = Math.max(60, groundY - sphereR - (tableTop - pulleyR) - 14);
+  const pyPerM = dropPx / Math.max(p.h0, 1e-6);
+
+  const bx = startX + st.x * pxPerM;         // borde izq. del bloque
+  const by = tableTop - blockH;
+  const pcx = pulleyX, pcy = tableTop - 6;
+  const orbY = pcy - pulleyR;                // tangente superior
+  const ropeX = pcx;                          // tramo vertical
+  const sTop = orbY + 4 + st.x * pyPerM;
+  const sCy = Math.min(sTop + sphereR, groundY - sphereR);
+  const yNow = Math.max(0, p.h0 - st.x);
+
+  // Fondo: suelo y zona de caída
+  ctx.fillStyle = '#e2e8f0';
+  ctx.fillRect(0, groundY, W, H - groundY);
+  ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(W, groundY); ctx.stroke();
+
+  // Mesa gris
+  ctx.fillStyle = '#9ca3af';
+  ctx.strokeStyle = '#6b7280'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(tableX0, tableTop, pulleyX - tableX0, 16, 4);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#6b7280';
+  ctx.fillRect(tableX0 + 18, tableTop + 16, 12, groundY - tableTop - 16);
+  ctx.fillRect(pulleyX - 60, tableTop + 16, 12, groundY - tableTop - 16);
+  // Marca del borde
+  ctx.fillStyle = '#374151'; ctx.font = 'bold 11px sans-serif';
+  ctx.fillText('borde', pulleyX - 24, tableTop + 30);
+
+  // Polea
+  ctx.fillStyle = '#4b5563';
+  ctx.beginPath(); ctx.arc(pcx, pcy, pulleyR, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#d1d5db';
+  ctx.beginPath(); ctx.arc(pcx, pcy, pulleyR - 7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#1f2937';
+  ctx.beginPath(); ctx.arc(pcx, pcy, 4, 0, Math.PI * 2); ctx.fill();
+
+  // Cuerda: bloque -> tangente sup -> arco -> vertical -> esfera
+  const hx = bx + blockW, hy = by + blockH / 2;
+  ctx.strokeStyle = '#111827'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(hx, orbY);
+  ctx.lineTo(pcx, orbY);
+  ctx.arc(pcx, pcy, pulleyR, -Math.PI / 2, 0, false);
+  ctx.moveTo(pcx + pulleyR, pcy);
+  ctx.lineTo(pcx + pulleyR, sCy - sphereR);
+  ctx.stroke();
+
+  // Bloque m1 amarillo
+  ctx.fillStyle = '#facc15';
+  ctx.strokeStyle = '#a16207'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, blockW, blockH, 6);
+  ctx.fill(); ctx.stroke();
+  // ruedas
+  ctx.fillStyle = '#374151';
+  ctx.beginPath(); ctx.arc(bx + 12, tableTop - 1, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx + blockW - 12, tableTop - 1, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#713f12'; ctx.font = 'bold 14px sans-serif';
+  ctx.fillText(`m₁=${p.m1}kg`, bx + 2, by - 8);
+
+  // Esfera m2 azul
+  ctx.fillStyle = '#3b82f6';
+  ctx.strokeStyle = '#1d4ed8'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(pcx + pulleyR, sCy, sphereR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#1e3a8a'; ctx.font = 'bold 12px sans-serif';
+  ctx.fillText(`m₂=${p.m2}kg`, pcx + pulleyR + 24, sCy + 4);
+
+  // Vectores (longitud ∝ N)
+  if (accel && accel.executed) {
+    const pushingNow = p.F_push > 0 && st.t < p.dt_push && !st.stopped
+      && accel.push && accel.push.unstuck;
+    const c = pushingNow ? { a: accel.push.a_push, T: accel.push.T_push } : accel;
+    const T = c.T, Fr = accel.Fr, P2 = p.m2 * G;
+    const Fv = pushingNow ? p.F_push : 0;
+    const maxF = Math.max(T, Fr, P2, Fv, 1e-6);
+    const k = 110 / maxF;
+    const L = (F) => Math.max(8, F * k);
+    if (ui.showT.checked) {
+      arrow(hx, hy, hx + L(T), hy, '#2563eb', 'T');
+      arrow(pcx + pulleyR, sCy - sphereR, pcx + pulleyR, sCy - sphereR - L(T), '#2563eb', 'T');
+    }
+    if (ui.showFr.checked) arrow(bx, hy, bx - L(Fr), hy, '#dc2626', 'Fr');
+    if (ui.showP.checked) arrow(pcx + pulleyR, sCy + sphereR, pcx + pulleyR, sCy + sphereR + L(P2), '#ec4899', 'P₂');
+    if (pushingNow && ui.showF.checked)
+      arrow(bx - L(Fv) - 16, hy, bx, hy, '#16a34a', 'F');
+    // Etiquetas x, y en metros
+    ctx.fillStyle = '#111827'; ctx.font = 'bold 13px sans-serif';
+    ctx.fillText(`x = ${st.x.toFixed(2)} m`, bx - 6, by + blockH + 22);
+    ctx.fillText(`y = ${yNow.toFixed(2)} m`, pcx + pulleyR + 24, sCy + 24);
+  } else {
+    ctx.fillStyle = '#b91c1c'; ctx.font = 'bold 14px sans-serif';
+    ctx.fillText('⚠ Parámetros inválidos (ver aviso).', 40, 40);
+  }
+}
+
+// Eventos
+ui.btnPlay.addEventListener('click', () => {
+  if (!S) reset();
+  if (!S) return;
+  if (S.stopped && S.reason !== null && S.reason !== 'tMax') {
+    if (S.reason === 'reposo') { setBanner('⏸ El sistema está en reposo: no hay movimiento.', 'info'); return; }
+    setBanner('🛑 La simulación ya terminó. Pulsa Reiniciar para repetir.', 'info'); return;
+  }
+  running = true; lastTs = 0;
+  const P = S.accel.push;
+  setBanner(P && P.unstuck && S.t < S.params.dt_push ? '▶ En marcha (💪 empujando…)' : '▶ En marcha…', 'info');
+});
+ui.btnPause.addEventListener('click', () => { running = false; setBanner('⏸ En pausa.', 'info'); });
+ui.btnReset.addEventListener('click', reset);
+ui.btnStep.addEventListener('click', () => {
+  if (!S) reset();
+  if (!S || S.stopped) return;
+  running = false;
+  for (let i = 0; i < 10 && !S.stopped; i++) substep(); // 10×DT = 0.05 s
+  drawScene(S.params, S, S.accel);
+  updateReads(S.params, S, S.accel);
+  if (!S.stopped) setBanner(`⏭ Paso: t=${S.t.toFixed(3)} s, x=${S.x.toFixed(3)} m.`, 'info');
+});
+['m1','m2','mus','muk','x0','h0','fpush','dtpush'].forEach((k) => ui[k].addEventListener('change', reset));
+['showT','showFr','showP','showF'].forEach((k) => ui[k].addEventListener('change', () => { if (S) drawScene(S.params, S, S.accel); }));
+ui.btnPush.addEventListener('click', () => {
+  ui.fpush.value = '5';
+  ui.dtpush.value = '0.2';
+  reset();
+});
+window.addEventListener('resize', () => { if (S) drawScene(S.params, S, S.accel); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) running = false; });
+
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Simulación plano inclinado: bloque con rozamiento, vectores y empuje ladera abajo opcional." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📐</text></svg>" />
+<title>Labo 3 · Bloque en plano inclinado</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <a class="back" href="index.html">← Volver al índice</a>
+  <h1>📐 Labo 3 · Bloque en plano inclinado</h1>
+  <p>Rozamiento · <code>g = 9.8 m/s²</code> · paso fijo <code>dt = 0.005 s</code> · reposo si <code>tan θ ≤ μs</code></p>
+</header>
+<main>
+  <section class="canvas-card">
+    <canvas id="scene" width="760" height="420"></canvas>
+    <div id="banner" class="info">Configura los parámetros y pulsa ▶ Play.</div>
+  </section>
+  <aside class="side">
+    <div class="box">
+      <h2>▶ Controles</h2>
+      <div class="btnrow">
+        <button id="btnPlay">▶ Play</button>
+        <button id="btnPause">⏸ Pausa</button>
+        <button id="btnReset">↺ Reiniciar</button>
+        <button id="btnStep">⏭ Paso +0.05 s</button>
+      </div>
+      <label style="margin-top:8px">Velocidad
+        <select id="speed">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+        </select>
+      </label>
+    </div>
+    <div class="box">
+      <h2>⚙ Parámetros</h2>
+      <div class="grid">
+        <label>m (kg)<input id="pm" type="number" inputmode="decimal" step="0.1" min="0.1" value="2"></label>
+        <label>θ (grados)<input id="theta" type="number" inputmode="decimal" step="1" min="0" max="90" value="30"></label>
+        <label>μ estático<input id="mus" type="number" inputmode="decimal" step="0.01" min="0" value="0.3"></label>
+        <label>μ cinético<input id="muk" type="number" inputmode="decimal" step="0.01" min="0" value="0.2"></label>
+        <label>Longitud L (m)<input id="plano" type="number" inputmode="decimal" step="0.1" min="0.1" value="3"></label>
+        <label>Empuje F (N)<input id="fpush" type="number" inputmode="decimal" step="0.5" min="0" value="0"></label>
+        <label>Δt empuje (s)<input id="dtpush" type="number" inputmode="decimal" step="0.05" min="0" value="0.2"></label>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button id="btnPush" style="background:#16a34a;color:#fff">💪 Empuje pequeño</button>
+      </div>
+    </div>
+    <div class="box">
+      <h2>⏱ Cronómetro y estado</h2>
+      <div class="chrono" id="clock">00:00.000</div>
+      <div class="read">
+        <div><b>s descendida (m)</b><span id="rs">0.000</span></div>
+        <div><b>v (m/s)</b><span id="rv">0.000</span></div>
+        <div><b>a (m/s²)</b><span id="ra">–</span></div>
+        <div><b>N (N)</b><span id="rN">–</span></div>
+        <div><b>Fr (N)</b><span id="rFr">–</span></div>
+        <div><b>P (N)</b><span id="rP">–</span></div>
+      </div>
+    </div>
+    <div class="box">
+      <h2>🎨 Vectores (longitud ∝ valor)</h2>
+      <div class="legend">
+        <div><span class="dot" style="background:#ec4899"></span><b style="color:#ec4899">P</b> peso (rosa) <input type="checkbox" id="showP" checked></div>
+        <div><span class="dot" style="background:#2563eb"></span><b style="color:#2563eb">N</b> normal (azul) <input type="checkbox" id="showN" checked></div>
+        <div><span class="dot" style="background:#dc2626"></span><b style="color:#dc2626">Fr</b> rozamiento (rojo) <input type="checkbox" id="showFr" checked></div>
+        <div><span class="dot" style="background:#16a34a"></span><b style="color:#16a34a">F</b> empuje (verde) <input type="checkbox" id="showF" checked></div>
+      </div>
+    </div>
+  </aside>
+</main>
+<footer>
+  Abre con servidor local (p. ej. <code>python3 -m http.server</code>) porque la página importa <code>./incline.js</code> como módulo ES.
+</footer>
+
+<script type="module">
+import { DT, solveIncline } from './incline.js';
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('scene');
+const ctx = canvas.getContext('2d');
+const banner = $('banner');
+
+const ui = {
+  pm: $('pm'), theta: $('theta'), mus: $('mus'), muk: $('muk'), plano: $('plano'),
+  fpush: $('fpush'), dtpush: $('dtpush'),
+  speed: $('speed'),
+  clock: $('clock'), rs: $('rs'), rv: $('rv'), ra: $('ra'), rN: $('rN'), rFr: $('rFr'), rP: $('rP'),
+  showP: $('showP'), showN: $('showN'), showFr: $('showFr'), showF: $('showF'),
+  btnPlay: $('btnPlay'), btnPause: $('btnPause'), btnReset: $('btnReset'), btnStep: $('btnStep'),
+  btnPush: $('btnPush'),
+};
+
+let S = null;
+let running = false;
+let accMs = 0, lastTs = 0;
+
+const num = (el, fb) => {
+  const v = parseFloat(el.value);
+  return Number.isFinite(v) ? v : fb;
+};
+const readParams = () => ({
+  m: num(ui.pm, 2), theta_deg: num(ui.theta, 30),
+  mu_s: num(ui.mus, 0.3), mu_k: num(ui.muk, 0.2),
+  L: num(ui.plano, 3),
+  F_push: num(ui.fpush, 0), dt_push: num(ui.dtpush, 0.2),
+});
+
+// Aceleración instantánea (fase de empujón vs fase libre). N y Fr no cambian.
+function curA() {
+  if (!S || !S.accel || !S.accel.executed) return null;
+  const P = S.accel.push;
+  if (P && P.unstuck && S.t < S.params.dt_push && !S.stopped) return P.a_push;
+  return S.accel.a;
+}
+
+function setBanner(msg, kind = 'info') {
+  banner.textContent = msg;
+  banner.className = kind === 'warn' ? 'warn' : (kind === 'ok' ? '' : 'info');
+  banner.id = 'banner';
+}
+
+function reset() {
+  running = false; accMs = 0;
+  const p = readParams();
+  const r = solveIncline(p);
+  if (!r.executed) {
+    S = null; setBanner('⚠ ' + r.warning, 'warn'); ui.btnPlay.disabled = true;
+    drawScene(p, { s: 0, v: 0, t: 0 }, null);
+    updateReads(p, { s: 0, v: 0, t: 0 }, null);
+    return;
+  }
+  ui.btnPlay.disabled = false;
+  S = { s: 0, v: 0, t: 0, stopped: false, reason: null, accel: r, params: p };
+  if (r.atRest) {
+    S.stopped = true; S.reason = 'reposo';
+    if (p.F_push > 0 && p.dt_push > 0)
+      setBanner(`⏸ En reposo aun con empuje: m·g·sinθ+F (${(p.m * 9.8 * Math.sin((p.theta_deg * Math.PI) / 180) + p.F_push).toFixed(2)} N) ≤ μs·N (${(p.mu_s * r.N).toFixed(2)} N). El estático lo absorbe: Fr=${r.Fr.toFixed(2)} N.`, 'info');
+    else
+      setBanner(`⏸ En reposo: tanθ=${Math.tan((p.theta_deg * Math.PI) / 180).toFixed(3)} ≤ μs=${p.mu_s}. a=0, Fr=${r.Fr.toFixed(2)} N.`, 'info');
+  } else if (r.push && r.push.unstuck && (p.m * 9.8 * Math.sin((p.theta_deg * Math.PI) / 180) <= p.mu_s * r.N)) {
+    setBanner(`💪 El empuje despega el bloque (solo no bajaba). a_push=${r.push.a_push.toFixed(3)} m/s² durante ${p.dt_push} s, luego a=${r.a.toFixed(3)} m/s². Pulsa Play.`, 'info');
+  } else if (r.push && r.push.unstuck) {
+    setBanner(`💪 Con empuje: a_push=${r.push.a_push.toFixed(3)} m/s² durante ${p.dt_push} s, luego a=${r.a.toFixed(3)} m/s². Pulsa Play.`, 'info');
+  } else {
+    setBanner(`▶ Listo: a=${r.a.toFixed(3)} m/s², N=${r.N.toFixed(2)} N, Fr=${r.Fr.toFixed(2)} N. Pulsa Play.`, 'info');
+  }
+  drawScene(p, S, r);
+  updateReads(p, S, r);
+}
+
+function substep() {
+  if (!S || S.stopped || !S.accel || S.accel.atRest) return;
+  const P = S.accel.push;
+  const a = (P && P.unstuck && S.t < S.params.dt_push) ? P.a_push : S.accel.a;
+  S.s += S.v * DT + 0.5 * a * DT * DT;
+  S.v += a * DT;
+  S.t = Math.round((S.t + DT) / DT) * DT;
+  if (S.s >= S.params.L) {
+    S.s = S.params.L; S.v = 0; S.stopped = true; S.reason = 'base';
+    running = false;
+    setBanner(`🛑 Llegó a la base del plano. t=${S.t.toFixed(3)} s.`, 'ok');
+    return;
+  }
+  if (S.v <= 0) {
+    S.v = 0; S.stopped = true; S.reason = 'rozamiento';
+    running = false;
+    setBanner(`🛑 Detenido por rozamiento: el peso no sostiene el movimiento tras el empujón. t=${S.t.toFixed(3)} s, s=${S.s.toFixed(3)} m.`, 'ok');
+  }
+}
+
+function frame(ts) {
+  if (running && S && !S.stopped) {
+    if (!lastTs) lastTs = ts;
+    const speed = parseFloat(ui.speed.value) || 1;
+    accMs += (ts - lastTs) * speed;
+    lastTs = ts;
+    let n = 0;
+    while (accMs >= DT * 1000 && n < 400) { substep(); accMs -= DT * 1000; n++; if (S.stopped) { accMs = 0; break; } }
+    drawScene(S.params, S, S.accel);
+    updateReads(S.params, S, S.accel);
+  } else { lastTs = ts; }
+  requestAnimationFrame(frame);
+}
+
+function fmtClock(t) {
+  const mm = String(Math.floor(t / 60)).padStart(2, '0');
+  const ss = String(Math.floor(t % 60)).padStart(2, '0');
+  const ms = String(Math.floor((t % 1) * 1000)).padStart(3, '0');
+  return `${mm}:${ss}.${ms}`;
+}
+
+function updateReads(p, st, accel) {
+  ui.clock.textContent = fmtClock(st.t);
+  ui.rs.textContent = st.s.toFixed(3);
+  ui.rv.textContent = st.v.toFixed(3);
+  if (accel && accel.executed) {
+    const a = curA();
+    ui.ra.textContent = (a === null ? accel.a : a).toFixed(3);
+    ui.rN.textContent = accel.N.toFixed(2);
+    ui.rFr.textContent = accel.Fr.toFixed(2);
+    ui.rP.textContent = (p.m * 9.8).toFixed(2);
+  } else { ui.ra.textContent = ui.rN.textContent = ui.rFr.textContent = ui.rP.textContent = '–'; }
+}
+
+function arrow(x1, y1, x2, y2, color, label) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 2) return;
+  const ang = Math.atan2(dy, dx);
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  const h = 9;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - h * Math.cos(ang - 0.45), y2 - h * Math.sin(ang - 0.45));
+  ctx.lineTo(x2 - h * Math.cos(ang + 0.45), y2 - h * Math.sin(ang + 0.45));
+  ctx.closePath(); ctx.fill();
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText(label, x2 + 6, y2 - 6);
+}
+
+function fitCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const r = canvas.getBoundingClientRect();
+  canvas.width = Math.max(300, Math.round(r.width * dpr));
+  canvas.height = Math.round(420 * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function drawScene(p, st, accel) {
+  fitCanvas();
+  const r = canvas.getBoundingClientRect();
+  const W = r.width, H = 420;
+  ctx.clearRect(0, 0, W, H);
+
+  const th = (Math.min(90, Math.max(0, p.theta_deg)) * Math.PI) / 180;
+  const sin = Math.sin(th), cos = Math.cos(th);
+  const groundY = H - 44;
+  const cornerX = W - 70;
+  // Longitud en px que entra en el canvas para este ángulo
+  const Lp = Math.max(80, Math.min(330, (W - 150) / Math.max(cos, 0.2), (groundY - 90) / Math.max(sin, 0.2)));
+  const topX = cornerX - Lp * cos, topY = groundY - Lp * sin;
+  const pxPerM = Lp / Math.max(p.L, 1e-6);
+
+  // Suelo
+  ctx.fillStyle = '#e2e8f0';
+  ctx.fillRect(0, groundY, W, H - groundY);
+  ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(W, groundY); ctx.stroke();
+
+  // Plano gris (triángulo)
+  ctx.fillStyle = '#9ca3af';
+  ctx.strokeStyle = '#6b7280'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(topX, topY);
+  ctx.lineTo(cornerX, groundY);
+  ctx.lineTo(topX, groundY);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  // Superficie destacada
+  ctx.strokeStyle = '#374151'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(topX, topY); ctx.lineTo(cornerX, groundY); ctx.stroke();
+  // Arco del ángulo
+  ctx.strokeStyle = '#7c2d12'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cornerX, groundY, 34, Math.PI, Math.PI + Math.max(th, 0.02), false); ctx.stroke();
+  ctx.fillStyle = '#7c2d12'; ctx.font = 'bold 13px sans-serif';
+  ctx.fillText(`θ=${p.theta_deg}°`, cornerX - 66, groundY - 8);
+
+  // Bloque amarillo (cuadrado rotado +θ: cara inferior paralela a la rampa).
+  // El centro viaja sobre la recta de la pendiente, desplazado medio lado
+  // ladera abajo para que en s=0 el borde trasero coincida con el ápice
+  // (bloque 100% apoyado) y en s=L el delantero con la base. Solo dibujo.
+  const B = 46;
+  const dd = Math.min(Math.max(st.s * pxPerM + B / 2, B / 2), Lp - B / 2);
+  const cx = topX + dd * cos, cy = topY + dd * sin;
+  // normal exterior (apunta arriba-derecha del plano)
+  const nx = sin, ny = -cos;
+  const bx = cx + (nx * B) / 2, by = cy + (ny * B) / 2;
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.rotate(th);
+  ctx.fillStyle = '#facc15';
+  ctx.strokeStyle = '#a16207'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.roundRect(-B / 2, -B / 2, B, B, 6); ctx.fill(); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#713f12'; ctx.font = 'bold 13px sans-serif';
+  ctx.fillText(`m=${p.m}kg  s=${st.s.toFixed(2)} m`, Math.max(8, bx - 60), Math.max(16, by - B / 2 - 26));
+
+  // Vectores (longitud ∝ N)
+  if (accel && accel.executed) {
+    const pushingNow = p.F_push > 0 && st.t < p.dt_push && !st.stopped
+      && accel.push && accel.push.unstuck;
+    const P = p.m * 9.8, N = accel.N, Fr = accel.Fr;
+    const Fv = pushingNow ? p.F_push : 0;
+    const maxF = Math.max(P, N, Fr, Fv, 1e-6);
+    const k = 105 / maxF;
+    const L = (F) => Math.max(8, F * k);
+    // dirección de descenso (unitaria): (cos, sin); normal ext: (sin, -cos)
+    if (ui.showP.checked) arrow(bx, by, bx, by + L(P), '#ec4899', 'P');
+    if (ui.showN.checked) arrow(bx, by, bx + nx * L(N), by + ny * L(N), '#2563eb', 'N');
+    if (ui.showFr.checked) arrow(bx, by, bx - cos * L(Fr), by - sin * L(Fr), '#dc2626', 'Fr');
+    if (pushingNow && ui.showF.checked)
+      arrow(bx - cos * L(Fv), by - sin * L(Fv), bx, by, '#16a34a', 'F');
+  } else {
+    ctx.fillStyle = '#b91c1c'; ctx.font = 'bold 14px sans-serif';
+    ctx.fillText('⚠ Parámetros inválidos (ver aviso).', 40, 40);
+  }
+}
+
+ui.btnPlay.addEventListener('click', () => {
+  if (!S) reset();
+  if (!S) return;
+  if (S.stopped) {
+    if (S.reason === 'reposo') { setBanner('⏸ El sistema está en reposo: no hay movimiento.', 'info'); return; }
+    setBanner('🛑 La simulación ya terminó. Pulsa Reiniciar para repetir.', 'info'); return;
+  }
+  running = true; lastTs = 0;
+  const P = S.accel.push;
+  setBanner(P && P.unstuck && S.t < S.params.dt_push ? '▶ En marcha (💪 empujando…)' : '▶ En marcha…', 'info');
+});
+ui.btnPause.addEventListener('click', () => { running = false; setBanner('⏸ En pausa.', 'info'); });
+ui.btnReset.addEventListener('click', reset);
+ui.btnStep.addEventListener('click', () => {
+  if (!S) reset();
+  if (!S || S.stopped) return;
+  running = false;
+  for (let i = 0; i < 10 && !S.stopped; i++) substep();
+  drawScene(S.params, S, S.accel);
+  updateReads(S.params, S, S.accel);
+  if (!S.stopped) setBanner(`⏭ Paso: t=${S.t.toFixed(3)} s, s=${S.s.toFixed(3)} m.`, 'info');
+});
+['pm', 'theta', 'mus', 'muk', 'plano', 'fpush', 'dtpush'].forEach((k) => ui[k].addEventListener('change', reset));
+['showP', 'showN', 'showFr', 'showF'].forEach((k) => ui[k].addEventListener('change', () => { if (S) drawScene(S.params, S, S.accel); }));
+ui.btnPush.addEventListener('click', () => {
+  ui.fpush.value = '5';
+  ui.dtpush.value = '0.2';
+  reset();
+});
+window.addEventListener('resize', () => { if (S) drawScene(S.params, S, S.accel); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) running = false; });
+
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

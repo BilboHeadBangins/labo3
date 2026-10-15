@@ -88,3 +88,25 @@ si se perdió la terminal: `lsof -ti:8000 | xargs kill` o `pkill -f "http.server
   sin rozamiento (a=4.9), calculado (a≈3.20), caída libre, integración
   (DT, analítica, base, reposo, μk>μs, θ inválido), empuje insuficiente,
   empuje+despegue+frenado, empuje en marcha+regresión+inválidos.
+
+## 8. Sesión octubre 2026 — Deploy a GitHub Pages
+
+- Decisión: repo `BilboHeadBangins/labo3` (nombre corto, proyecto inicial),
+  root web = contenido de `labo3/`, hosting GitHub Pages, subdominio gratis
+  `bilboheadbangins.github.io/labo3`. Uso principal: celular → Agregar a pantalla principal.
+- Remote ya existía vacío (1 commit LICENSE GPL-3.0 `47904d2`);
+  local `git init -b main`, commit `3edafea` + rebase + push.
+- Agregados: `.github/workflows/pages.yml` (Static HTML, deploy auto en push a main),
+  `README.md` (URL + uso celu + dev local), `.gitignore` (node_modules), `404.html`.
+- Retoques móvil sin tocar física: `inputmode="decimal"` en inputs numéricos,
+  `button{touch-action:manipulation}`, `@media 600px canvas 340px`,
+  `meta description` + favicon emoji inline en las 3 páginas.
+- Pages activado vía `gh api POST repos/.../pages {build_type: workflow}`;
+  run Deploy OK en ~16s. Tests 19/19 verde antes y después.
+- URLs vivas: `https://bilboheadbangins.github.io/labo3/` (oficial, en README)
+  y alias automático `https://ilechma.me/labo3/` — el dominio estudiante viene
+  de la cuenta, no lo configuramos en este repo (`cname:null`);
+  no bloquea otros proyectos (`/otro-proyecto/` convive).
+- Discutido sin implementar: tests validan consistencia interna vs teoría,
+  no contra experimento real; pendiente capa de invariantes (energía, cotas)
+  y/o protocolo de comparación con mediciones del labo.
